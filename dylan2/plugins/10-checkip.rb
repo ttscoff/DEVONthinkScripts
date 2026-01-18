@@ -6,8 +6,8 @@
 class CheckIPPlugin < Dylan::Plugin
   pattern(/checkip.*\.synology\.com/)
 
-  IPV4_ADDRESS = "100.108.56.219"
-  IPV6_ADDRESS = "2a00:6020:1000:a0::1da1"
+  IPV4_ADDRESS = "203.0.113.1" (example IP)
+  IPV6_ADDRESS = "2001:db8::1" (example IP)
 
   def call(host, path, request)
     # IPv6 Check
