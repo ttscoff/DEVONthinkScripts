@@ -3,6 +3,9 @@
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
+# Am Anfang vom Script als Config-Variable
+NTFY_TOPIC="mytopic"  # Change to your ntfy.sh topic
+
 # Define hosts to monitor
 declare -A hosts=(
   ["CachyOS VM"]="192.168.1.152"
@@ -86,9 +89,9 @@ for name in "${!hosts[@]}"; do
   # 3. Notify only on status change
   if [[ "$last_status" != "$current_status" ]]; then
     if [[ "$current_status" == "offline" ]]; then
-      curl -s -d "$name ($ip) ist offline!" ntfy.sh/rhsev-vsFP-Foam > /dev/null 2>&1
+      curl -s -d "$name ($ip) ist offline!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     else
-      curl -s -d "$name ($ip) ist wieder online!" ntfy.sh/rhsev-vsFP-Foam > /dev/null 2>&1
+      curl -s -d "$name ($ip) ist wieder online!" ntfy.sh/$NTFY_TOPIC > /dev/null 2>&1
     fi
   fi
 done
