@@ -1,14 +1,14 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Dylan 2.0 - Async HTTP Server
-# Unterstützt parallele Requests via Fibers
+# Dylan 1.0 - Async HTTP Server
+# Supports parallel requests via Fibers
 
 require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
 
-# Lade Dylan Core
+# Load Dylan Core
 require_relative 'lib/plugin'
 require_relative 'lib/router'
 require_relative 'lib/response'
@@ -19,30 +19,39 @@ PLUGIN_DIR = File.join(__dir__, 'plugins')
 # Initialize router with plugin directory (for hot-reload)
 router = Dylan::Router.new(PLUGIN_DIR)
 
-# Plugins laden (alphabetisch sortiert)
+# Load plugins (sorted alphabetically)
 puts "=" * 60
-puts "Dylan 2.0 - Async Dynamic HTTP Router"
+puts "Dylan 1.0 - Async Dynamic HTTP Router"
 puts "=" * 60
 
 if Dir.exist?(PLUGIN_DIR)
   plugin_files = Dir.glob("#{PLUGIN_DIR}/*.rb").sort
 
-  plugin_files.each do |plugin_file|
-    puts "Loading: #{File.basename(plugin_file)}"
-    require plugin_file
+  # Ruby 4.0: Nutze 'it' Parameter für sauberere Syntax
+  # Safe loading: Continue even if a plugin fails to load
+  loaded_count = 0
+  plugin_files.each do
+    begin
+      require it
+      puts "✅ Loading: #{File.basename(it)}"
+      loaded_count += 1
+    rescue SyntaxError, StandardError => e
+      puts "🚫 FAILED to load #{File.basename(it)}: #{e.message}"
+      puts "   Location: #{e.backtrace.first}" if e.backtrace
+      # Server continues - only this plugin is skipped
+    end
   end
 
   # Register plugins (auto-registered via Dylan::Plugin.inherited)
-  Dylan::Plugin.registered_plugins.each do |plugin_class|
-    router.add_plugin(plugin_class)
-  end
+  Dylan::Plugin.registered_plugins.each { router.add_plugin(it) }
 
   # Inject router into MaintenancePlugin (for hot-reload, stats, etc.)
-  maintenance = router.plugins.find { |p| p.is_a?(MaintenancePlugin) }
+  # Ruby 4.0: Nutze 'it' Parameter
+  maintenance = router.plugins.find { it.is_a?(MaintenancePlugin) }
   maintenance.router = router if maintenance
 
   puts "-" * 60
-  puts "Loaded #{plugin_files.count} plugin file(s)"
+  puts "Loaded #{loaded_count}/#{plugin_files.count} plugin file(s)"
   puts "Registered #{router.route_count} route(s)"
 else
   puts "WARNING: No plugin directory found at #{PLUGIN_DIR}"
@@ -50,7 +59,7 @@ end
 
 puts "=" * 60
 
-# Async Server starten
+# Start Async Server
 Async do |task|
   endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{PORT}")
 

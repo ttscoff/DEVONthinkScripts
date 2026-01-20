@@ -194,6 +194,8 @@ class MaintenancePlugin < Dylan::Plugin
       uptime_human: format_duration(uptime),
       total_requests: @router.stats[:total_requests],
       requests_by_plugin: @router.stats[:requests_by_plugin],
+      errors_by_plugin: @router.stats[:errors_by_plugin],
+      disabled_plugins: @router.disabled_plugins.to_a,
       plugin_count: @router.route_count,
       started_at: @router.stats[:started_at].iso8601
     }
@@ -326,8 +328,25 @@ class MaintenancePlugin < Dylan::Plugin
   # Render stats as HTML
   def render_stats_html(stats)
     plugin_rows = stats[:requests_by_plugin].map do |plugin, count|
-      "<tr><td>#{plugin}</td><td>#{count}</td></tr>"
+      disabled = stats[:disabled_plugins].include?(plugin)
+      error_count = stats[:errors_by_plugin][plugin] || 0
+      row_class = disabled ? ' style="background: #ffebee; color: #c62828;"' : ''
+      status = disabled ? ' <span style="color: #c62828;">⚠️ DISABLED</span>' : ''
+      error_info = error_count > 0 ? " (#{error_count} errors)" : ""
+      "<tr#{row_class}><td>#{plugin}#{status}#{error_info}</td><td>#{count}</td></tr>"
     end.join("\n")
+
+    disabled_warning = if !stats[:disabled_plugins].empty?
+      <<~WARNING
+        <div style="background: #ffebee; border-left: 4px solid #c62828; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <strong style="color: #c62828;">⚠️ Circuit Breaker Active</strong><br>
+          #{stats[:disabled_plugins].size} plugin(s) disabled due to repeated errors:<br>
+          <strong>#{stats[:disabled_plugins].join(', ')}</strong>
+        </div>
+      WARNING
+    else
+      ""
+    end
 
     <<~HTML
       <!DOCTYPE html>
@@ -351,6 +370,8 @@ class MaintenancePlugin < Dylan::Plugin
         <div class="container">
           <h1>Server Statistics</h1>
           <p><a href="/dylan">← Back to Dashboard</a></p>
+
+          #{disabled_warning}
 
           <div class="metric">
             <strong>#{stats[:uptime_human]}</strong><br>

@@ -1,6 +1,8 @@
-# Dylan 2.0 - Deployment Guide
+# Dylan 1.0 - Deployment Guide
 
 Complete installation guide for Synology NAS, Mac/Linux, and infrastructure setup.
+
+**Dylan 1.0**: First release of Ruby 4.0 async HTTP router with robustness features.
 
 ---
 
@@ -91,8 +93,8 @@ A macvlan network allows containers to get their own IP addresses on your local 
 ### Step 1: Upload Files
 
 ```bash
-# Upload dylan2 folder to:
-/volume1/docker/dylan2
+# Upload dylan folder to:
+/volume1/docker/dylan
 ```
 
 ### Step 2: Configure IP Address
@@ -113,7 +115,7 @@ networks:
 ### Step 3: Deploy in Portainer
 
 1. Go to **Stacks** → **Add Stack**
-2. **Name**: `dylan2`
+2. **Name**: `dylan`
 3. **Upload** or paste `docker-compose.yml`
 4. Click **Deploy the stack**
 
@@ -132,7 +134,7 @@ curl http://192.168.1.252/dylan/routes
 View logs in Portainer or via SSH:
 
 ```bash
-docker logs dylan2 -f
+docker logs dylan -f
 ```
 
 You should see:
@@ -144,8 +146,17 @@ You should see:
 */5 * * * * /app/scripts/monitor.sh > /proc/1/fd/1 2>&1
 ==> Starting Dylan HTTP Server...
 ============================================================
-Dylan 2.0 - Async Dynamic LAN Server
+Dylan 1.0 - Async HTTP Server (Ruby 4.0)
 ============================================================
+Loading plugins from: /app/plugins
+✅ Loading: 00-maintenance.rb
+  Registered: MaintenancePlugin (pattern: /^\/dylan(\/|$)/)
+✅ Loading: 10-checkip.rb
+  Registered: CheckIPPlugin (pattern: /^\/$/)
+...
+🚀 Server running on http://0.0.0.0:80
+   Performance: 6000+ req/s
+   Features: Circuit breaker, Per-plugin timeouts, Safe plugin loading
 ```
 
 ---
@@ -180,11 +191,11 @@ brew install --cask docker
 
 ### Deploy
 
-1. **Clone/copy Dylan 2.0**
+1. **Clone/copy Dylan 1.0**
    ```bash
    cd ~/Projects
-   git clone <repo> dylan2
-   cd dylan2
+   git clone <repo> dylan
+   cd dylan
    ```
 
 2. **Start Dylan**
@@ -194,7 +205,7 @@ brew install --cask docker
 
 3. **View logs**
    ```bash
-   docker logs dylan2 -f
+   docker logs dylan -f
    ```
 
 4. **Access**
@@ -210,7 +221,7 @@ brew install --cask docker
 vim plugins/50-simple-redirects.rb
 
 # Restart to reload
-docker restart dylan2
+docker restart dylan
 
 # Test
 curl -I http://localhost:8080/g/test
@@ -250,7 +261,7 @@ redirects:
 
 **Restart to apply:**
 ```bash
-docker restart dylan2
+docker restart dylan
 ```
 
 ### Cron Jobs
@@ -288,7 +299,7 @@ environment:
 
 **Check logs:**
 ```bash
-docker logs dylan2
+docker logs dylan
 ```
 
 **Common issues:**
@@ -300,17 +311,17 @@ docker logs dylan2
 
 **Verify cron is loaded:**
 ```bash
-docker exec dylan2 crontab -l
+docker exec dylan crontab -l
 ```
 
 **Check cron output in logs:**
 ```bash
-docker logs dylan2 | grep monitor
+docker logs dylan | grep monitor
 ```
 
 **Test manually:**
 ```bash
-docker exec dylan2 /app/scripts/monitor.sh
+docker exec dylan /app/scripts/monitor.sh
 ```
 
 ### Can't access from network
@@ -329,12 +340,18 @@ docker exec dylan2 /app/scripts/monitor.sh
 
 **Restart container:**
 ```bash
-docker restart dylan2
+docker restart dylan
 ```
 
 **Check logs for errors:**
 ```bash
-docker logs dylan2 | grep -i error
+docker logs dylan | grep -i error
+```
+
+**Check circuit breaker status:**
+```bash
+# Visit the stats page to see if any plugins are disabled
+curl http://your-ip/dylan/stats?format=json
 ```
 
 ### High memory usage
@@ -342,13 +359,67 @@ docker logs dylan2 | grep -i error
 **Dylan is lightweight** (~50MB), but if memory is high:
 - Check for memory leaks in custom plugins
 - Review async operations (ensure fibers terminate)
-- Restart container: `docker restart dylan2`
+- Restart container: `docker restart dylan`
 
+### Plugin Errors and Circuit Breaker
 
-### Troubleshooting
+Dylan 1.0 includes automatic error handling:
 
-1. Check logs: `docker logs dylan2`
-2. Verify configuration files (docker-compose.yml, config/*)
-3. Test plugins individually
-4. Review DEVELOPMENT.md for plugin debugging
+**Circuit Breaker Protection:**
+- Plugins that error 5+ times are automatically disabled
+- Check disabled plugins at `/dylan/stats`
+- Logs show error count: `Error count: 3/5`
+
+**Common plugin errors:**
+```bash
+# Timeout errors (plugin took too long)
+❌ ERROR in WeatherPlugin: TIMEOUT (>3.0s)
+
+# General errors
+❌ ERROR in MyPlugin: undefined method 'foo'
+   Error count: 1/5
+
+# Circuit breaker triggered
+🚨 CIRCUIT BREAKER: MyPlugin disabled after 5 errors
+```
+
+**Fix disabled plugins:**
+1. Check logs: `docker logs dylan | grep ERROR`
+2. Fix the plugin code
+3. Restart: `docker restart dylan`
+4. Verify at `/dylan/stats` (disabled plugins shown in red)
+
+### Performance Expectations
+
+Dylan 1.0 performance benchmarks:
+- **Simple redirects**: 6,100+ req/s
+- **Dynamic content**: 5,700+ req/s
+- **Slow APIs**: Handled concurrently (non-blocking)
+
+**Test performance:**
+```bash
+# Install Apache Bench
+brew install httpd  # Mac
+apt install apache2-utils  # Linux
+
+# Benchmark simple redirect
+ab -n 1000 -c 10 http://localhost:8080/g/test
+
+# You should see 5000+ requests/second
+```
+
+### Ruby 4.0 Features
+
+Dylan leverages Ruby 4.0 for better performance:
+- Fiber-based async concurrency
+- Modern syntax (`it` parameter in core)
+- No JIT (ZJIT disabled for better latency)
+
+### Troubleshooting Summary
+
+1. **Check logs**: `docker logs dylan`
+2. **Verify configuration** files (docker-compose.yml, config/*)
+3. **Test plugins** individually at `/dylan/test?path=/your/path`
+4. **Monitor stats** at `/dylan/stats` for circuit breaker status
+5. **Review DEVELOPMENT.md** for detailed plugin debugging
 

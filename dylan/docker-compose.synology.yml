@@ -2,12 +2,18 @@ version: '3.8'
 
 services:
   dylan:
-    image: dylan:1.0  # Use pre-built image
+    image: ruby:4.0-alpine
     container_name: dylan
     restart: unless-stopped
 
     volumes:
+      - /volume1/docker/dylan:/app
       - /volume1/docker/dylan/data:/app/data:rw
+
+    working_dir: /app
+
+    # Install build tools + git, cron, gems, setup crontab, then start
+    command: sh -c "apk add --no-cache build-base bash cronie curl git && bundle install && crontab /app/config/crontab && /app/scripts/start.sh"
 
     networks:
       existing_macvlan:

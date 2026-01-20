@@ -1,6 +1,6 @@
-# Dylan 2.0 - Development Guide
+# Dylan 1.0 - Development Guide
 
-Complete guide for developing plugins, testing, and extending Dylan 2.0.
+Complete guide for developing plugins, testing, and extending Dylan 1.0.
 
 ---
 
@@ -25,6 +25,7 @@ Dylan uses a simple plugin system:
 2. **Pattern Matching**: Define regex patterns to match requests
 3. **Handler Method**: Implement `call(host, path, request)` to handle requests
 4. **Auto-Registration**: Plugins are automatically discovered and loaded
+5. **Timeout Control**: Optional per-plugin timeout configuration (default 500ms)
 
 ### Your First Plugin
 
@@ -55,6 +56,25 @@ curl -I http://localhost:8080/w/Ruby
 # → 302 redirect to https://en.wikipedia.org/wiki/Ruby
 ```
 
+### Plugin with Custom Timeout
+
+For plugins that make external API calls:
+
+```ruby
+class SlowAPIPlugin < Dylan::Plugin
+  pattern(%r{^/api/external})
+  timeout(3.0)  # Allow up to 3 seconds (default is 500ms)
+
+  def call(host, path, request)
+    # Make external API call
+    # Use Async::Task.current.sleep to yield CPU
+    Async::Task.current.sleep(2)
+
+    Dylan::Response.json({ status: "ok" })
+  end
+end
+```
+
 ### Plugin Lifecycle
 
 1. **Load**: Plugins are loaded alphabetically by filename
@@ -66,10 +86,11 @@ curl -I http://localhost:8080/w/Ruby
 3. **Routing**: Router checks patterns in load order
    - First matching pattern wins
    - Once a plugin returns a response, routing stops
+   - Failed plugins don't stop routing (error handling continues to next plugin)
 
 4. **Reload**: Restart container to reload plugins
    ```bash
-   docker restart dylan2
+   docker restart dylan
    ```
 
 ---
@@ -286,14 +307,16 @@ end
 
 ### Local Setup (Mac)
 
-1. **Install Ruby 3.3** (if testing without Docker)
+1. **Install Ruby 4.0** (if testing without Docker)
    ```bash
-   brew install ruby@3.3
+   # Ruby 4.0 via rbenv/asdf
+   rbenv install 4.0.1
+   rbenv local 4.0.1
    ```
 
 2. **Install dependencies**
    ```bash
-   cd dylan2
+   cd dylan
    bundle install
    ```
 
@@ -310,13 +333,13 @@ end
 ### File Structure
 
 ```
-dylan2/
+dylan/
 ├── server.rb                 # Main server entry point
 ├── Gemfile                   # Ruby dependencies
 │
 ├── lib/
 │   ├── plugin.rb            # Base plugin class
-│   ├── router.rb            # Request router + stats
+│   ├── router.rb            # Request router + circuit breaker
 │   └── response.rb          # Response helpers
 │
 ├── plugins/                 # Your plugins here!
@@ -347,16 +370,16 @@ dylan2/
 vim plugins/70-my-plugin.rb
 
 # 2. Restart container (hot reload not available)
-docker restart dylan2
+docker restart dylan
 
 # 3. Test the change
 curl -I http://localhost:8080/your/path
 
 # 4. Check logs
-docker logs dylan2 -f
+docker logs dylan -f
 
 # 5. Debug
-docker exec -it dylan2 /bin/sh
+docker exec -it dylan /bin/sh
 ```
 
 ---
@@ -404,31 +427,29 @@ Test async behavior with concurrent requests:
 # Install Apache Bench (if not installed)
 brew install httpd
 
-# 100 requests, 10 concurrent
-ab -n 100 -c 10 http://localhost:8080/weather/Berlin
+# 1000 requests, 10 concurrent
+ab -n 1000 -c 10 http://localhost:8080/dylan
 
 # Check if slow requests don't block fast ones
 curl http://localhost:8080/weather/Berlin &  # Slow (2s)
+sleep 0.1
 curl http://localhost:8080/g/test           # Should be instant!
 ```
 
-### Automated Testing
+### Circuit Breaker Testing
 
-Create `test_performance.rb`:
+Test error handling with the chaos plugin:
 
-```ruby
-require 'net/http'
-require 'benchmark'
+```bash
+# Enable chaos plugin
+mv plugins/99-chaos-test.rb.disabled plugins/99-chaos-test.rb
+docker restart dylan
 
-# Test concurrent requests
-threads = 10.times.map do
-  Thread.new do
-    Net::HTTP.get(URI('http://localhost:8080/weather/Berlin'))
-  end
-end
+# Trigger errors to test circuit breaker
+for i in {1..5}; do curl http://localhost:8080/chaos/error; done
 
-time = Benchmark.realtime { threads.each(&:join) }
-puts "10 requests completed in #{time}s (should be ~2s, not 20s!)"
+# Check stats to see circuit breaker activation
+curl http://localhost:8080/dylan/stats
 ```
 
 ---
@@ -439,16 +460,19 @@ puts "10 requests completed in #{time}s (should be ~2s, not 20s!)"
 
 ```bash
 # Follow logs in real-time
-docker logs dylan2 -f
+docker logs dylan -f
 
 # Last 100 lines
-docker logs dylan2 --tail 100
+docker logs dylan --tail 100
 
 # Search for errors
-docker logs dylan2 | grep -i error
+docker logs dylan | grep -i error
 
 # Search for specific plugin
-docker logs dylan2 | grep WikipediaPlugin
+docker logs dylan | grep WikipediaPlugin
+
+# Check circuit breaker activations
+docker logs dylan | grep "CIRCUIT BREAKER"
 ```
 
 ### Debug Output in Plugins
@@ -473,7 +497,7 @@ Access container shell:
 
 ```bash
 # Enter container
-docker exec -it dylan2 /bin/sh
+docker exec -it dylan /bin/sh
 
 # Check loaded plugins
 ls -l /app/plugins/
@@ -483,6 +507,7 @@ crontab -l
 
 # Check Ruby version
 ruby --version
+# Should show: ruby 4.0.1
 
 # Check gems
 bundle list
@@ -496,10 +521,13 @@ exit
 **Plugin not loading:**
 ```bash
 # Check syntax
-docker exec dylan2 ruby -c /app/plugins/70-my-plugin.rb
+docker exec dylan ruby -c /app/plugins/70-my-plugin.rb
 
 # Check file permissions
-docker exec dylan2 ls -la /app/plugins/
+docker exec dylan ls -la /app/plugins/
+
+# Check logs for load errors
+docker logs dylan | grep "FAILED to load"
 ```
 
 **Pattern not matching:**
@@ -514,14 +542,11 @@ def call(host, path, request)
 end
 ```
 
-**Response not working:**
+**Plugin timing out:**
 ```ruby
-# Verify response type
-def call(host, path, request)
-  response = Dylan::Response.text("test")
-  puts "Response: #{response.class}"
-  puts "Status: #{response.status}"
-  response
+# Increase timeout for slow operations
+class MyPlugin < Dylan::Plugin
+  timeout(5.0)  # 5 seconds instead of default 500ms
 end
 ```
 
@@ -545,7 +570,7 @@ Use numeric prefixes to control load order:
 
 ### Error Handling
 
-Always handle errors gracefully:
+Dylan has built-in error handling, but you can add custom handling:
 
 ```ruby
 def call(host, path, request)
@@ -567,23 +592,40 @@ end
 
 ### Performance Tips
 
-1. **Keep plugins fast**: Slow plugins block the fiber
-2. **Use async I/O**: For external API calls, use async-http
-3. **Cache results**: Store expensive computations
-4. **Avoid blocking**: Don't use long sleeps or blocking operations
+1. **Keep plugins fast**: Default 500ms timeout enforced
+2. **Use async sleep**: For delays, use `Async::Task.current.sleep(n)`
+3. **Set custom timeouts**: For external APIs, configure `timeout(seconds)`
+4. **Avoid blocking**: Don't use regular `sleep` or blocking operations
 
 ```ruby
-# BAD: Blocking operation
+# BAD: Blocking operation (blocks all other requests!)
 def call(host, path, request)
-  sleep 5  # Blocks fiber for 5 seconds!
+  sleep 5  # This blocks the entire fiber!
   Dylan::Response.text("Done")
 end
 
-# GOOD: Quick response
+# GOOD: Async sleep (yields to other requests)
+def call(host, path, request)
+  Async::Task.current.sleep(5)  # Other requests continue!
+  Dylan::Response.text("Done")
+end
+
+# BEST: Quick response
 def call(host, path, request)
   Dylan::Response.redirect("https://example.com")
 end
 ```
+
+### Robustness Features
+
+Dylan 1.0 includes automatic robustness features:
+
+1. **Circuit Breaker**: Plugins that error 5+ times are automatically disabled
+2. **Timeout Protection**: Plugins that exceed their timeout are killed
+3. **Safe Loading**: Syntax errors in plugins don't crash the server
+4. **Error Recovery**: Plugin errors don't stop request processing
+
+Monitor these features at `/dylan/stats`.
 
 ### Security
 
@@ -612,6 +654,7 @@ require 'async/http/internet'
 
 class AsyncAPIPlugin < Dylan::Plugin
   pattern(%r{^/api/weather/(.+)$})
+  timeout(5.0)  # External API needs more time
 
   def call(host, path, request)
     city = path.match(%r{^/api/weather/(.+)$})[1]
@@ -703,6 +746,30 @@ chmod +x scripts/fetch_weather.sh
 
 ---
 
+## Ruby 4.0 Features
+
+Dylan 1.0 uses modern Ruby 4.0 features in the core:
+
+### The `it` Parameter
+
+```ruby
+# Core code uses 'it' for cleaner syntax
+plugin_files.each { puts "Loading: #{File.basename(it)}"; require it }
+
+# In your plugins, use explicit parameters for clarity
+@redirects.each do |redirect|
+  # Process redirect
+end
+```
+
+### Best Practices for Ruby 4.0
+
+- Core framework code uses `it` for modern syntax
+- Plugin code should stay explicit for readability
+- User-facing APIs prioritize clarity over brevity
+
+---
+
 ## Plugin Examples
 
 ### Simple Redirect
@@ -764,3 +831,9 @@ class DashboardPlugin < Dylan::Plugin
   end
 end
 ```
+
+---
+
+## Version
+
+**Dylan 1.0** - First release of Ruby 4.0 async HTTP router with enterprise robustness features.

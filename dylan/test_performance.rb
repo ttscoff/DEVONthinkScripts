@@ -1,14 +1,15 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Performance Test für Dylan 2.0
-# Vergleicht serielle vs. parallele Requests
+# Performance Test for Dylan 1.0
+# Compares serial vs. parallel requests
+# Tests async/fiber-based concurrency
 
 require 'net/http'
 require 'benchmark'
 
 HOST = 'localhost'
-PORT = 80
+PORT = 8080  # Mac: 8080, Synology: 80
 
 def make_request(path)
   start = Time.now
@@ -20,23 +21,23 @@ rescue => e
 end
 
 puts "=" * 70
-puts "Dylan 2.0 Performance Test"
+puts "Dylan 1.0 Performance Test (Ruby 4.0)"
 puts "=" * 70
 puts
 
-# Test 1: Einzelne Requests (Baseline)
-puts "Test 1: Einzelne Requests (Baseline)"
+# Test 1: Single Requests (Baseline)
+puts "Test 1: Single Requests (Baseline)"
 puts "-" * 70
 
-['/g/ruby', '/gh/rails/rails', '/abc12345', '/monitor'].each do |path|
+['/g/ruby', '/gh/rails/rails', '/1A22832D', '/monitor'].each do |path|
   result = make_request(path)
   puts "  #{path.ljust(20)} -> #{result[:status]} (#{(result[:duration] * 1000).round(1)}ms)"
 end
 
 puts
 
-# Test 2: Parallele Requests (zeigt Async-Vorteil)
-puts "Test 2: Parallele Fast Requests (ohne Weather-Plugin)"
+# Test 2: Parallel Fast Requests
+puts "Test 2: Parallel Fast Requests (without Weather plugin)"
 puts "-" * 70
 
 paths = ['/g/ruby', '/gh/rails', '/wiki/Ruby', '/yt/async']
@@ -56,10 +57,10 @@ puts "  Total: #{(elapsed * 1000).round(1)}ms (parallel)"
 puts "  Expected serial: ~#{(paths.count * 10).round(0)}ms"
 puts
 
-# Test 3: Slow Request + Fast Requests (Demo Async-Vorteil)
-puts "Test 3: Slow Request (Weather) + Fast Requests gleichzeitig"
+# Test 3: Slow Request + Fast Requests (Demo Async Advantage)
+puts "Test 3: Slow Request (Weather) + Fast Requests simultaneously"
 puts "-" * 70
-puts "  Startet /weather/Berlin (2s) + 3x Fast Requests parallel"
+puts "  Starting /weather/Berlin (2s) + 3x Fast Requests in parallel"
 puts
 
 elapsed = Benchmark.realtime do
@@ -78,12 +79,13 @@ end
 
 puts
 puts "  Total: #{(elapsed * 1000).round(1)}ms"
-puts "  ✅ Wenn <2100ms: Fast Requests liefen PARALLEL (nicht blockiert!)"
-puts "  ❌ Wenn >6000ms: Requests liefen SERIELL (blockiert)"
+puts "  ✅ If <2100ms: Fast requests ran in PARALLEL (not blocked!)"
+puts "  ❌ If >6000ms: Requests ran SERIALLY (blocked)"
 puts
 
 puts "=" * 70
 puts "Interpretation:"
-puts "  - Async Server: Fast Requests antworten sofort (~10-50ms)"
-puts "  - Sync Server: Fast Requests warten auf Weather (>2000ms)"
+puts "  - Async Server (Dylan 1.0): Fast requests respond immediately (~3-10ms)"
+puts "  - Sync Server: Fast requests wait for Weather (>2000ms)"
+puts "  - Ruby 4.0 Fibers: Non-blocking I/O with Async::Task"
 puts "=" * 70

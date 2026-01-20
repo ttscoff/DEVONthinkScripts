@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 # Pattern Redirect Plugin
-# Ersetzt YOURLS für dynamische Pattern-basierte Redirects
+# Replaces YOURLS for dynamic pattern-based redirects
 #
 # Patterns:
-#   /n/SUCHWORT → Apple Shortcuts (Notes-Suche)
-#   /XXXXXXXX (8 Zeichen) → DevonThink-Suche
+#   /n/SEARCH_TERM → Apple Shortcuts (Notes search)
+#   /XXXXXXXX (8 characters) → DEVONthink search
 
 class NotesRedirectPlugin < Dylan::Plugin
   pattern(%r{^/n/(.+)$})

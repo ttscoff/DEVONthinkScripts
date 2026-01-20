@@ -17,6 +17,15 @@ module Dylan
         @pattern
       end
 
+      # Class-level timeout (in seconds)
+      # Default: 0.5s (500ms) - can be overridden per plugin
+      def timeout(seconds = nil)
+        if seconds
+          @timeout = seconds
+        end
+        @timeout || 0.5  # Default 500ms
+      end
+
       # Auto-registration when inherited
       def inherited(subclass)
         super
@@ -39,6 +48,11 @@ module Dylan
     # Returns pattern (can be instance-specific)
     def pattern
       self.class.pattern
+    end
+
+    # Returns timeout in seconds (can be instance-specific)
+    def timeout
+      self.class.timeout
     end
 
     # Handler method (MUST be overridden by plugin)

@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-# CheckIP Plugin - IPv4 und IPv6
-# Emuliert Synology CheckIP Service
+# CheckIP Plugin - IPv4 and IPv6
+# Emulates Synology CheckIP Service
 
 class CheckIPPlugin < Dylan::Plugin
   pattern(/checkip.*\.synology\.com/)
 
-  IPV4_ADDRESS = "203.0.113.1" 
+  IPV4_ADDRESS = "203.0.113.1"
   IPV6_ADDRESS = "2001:db8::1"
 
   def call(host, path, request)

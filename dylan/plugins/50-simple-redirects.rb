@@ -3,13 +3,13 @@
 require 'yaml'
 
 # Simple Redirects Plugin
-# Lädt Redirects aus YAML-Datei - kein Ruby-Code nötig!
+# Loads redirects from YAML file - no Ruby code needed!
 #
-# User können einfach config/redirects.yaml editieren
+# Users can simply edit config/redirects.yaml
 
 class SimpleRedirectsPlugin < Dylan::Plugin
-  # Kein class-level Pattern! Wir checken dynamisch gegen YAML
-  pattern(/.^/)  # Matches nothing (wir überschreiben match?)
+  # No class-level pattern! We check dynamically against YAML
+  pattern(/.^/)  # Matches nothing (we override match?)
 
   CONFIG_PATH = File.join(__dir__, '..', 'config', 'redirects.yaml')
 
@@ -19,7 +19,7 @@ class SimpleRedirectsPlugin < Dylan::Plugin
     puts "    Loaded #{@redirects.count} simple redirect(s) from YAML"
   end
 
-  # Überschreibe match? für dynamische Patterns
+  # Override match? for dynamic patterns
   def match?(host, path)
     @redirects.any? { |r| path.match?(r[:pattern]) }
   end
@@ -27,7 +27,7 @@ class SimpleRedirectsPlugin < Dylan::Plugin
   def call(host, path, request)
     @redirects.each do |redirect|
       if match = path.match(redirect[:pattern])
-        # Ersetze ${1}, ${2}, etc. mit Capture-Groups
+        # Replace ${1}, ${2}, etc. with capture groups
         target = redirect[:target].dup
         match.captures.each_with_index do |capture, index|
           target.gsub!("${#{index + 1}}", capture.to_s)
@@ -37,7 +37,7 @@ class SimpleRedirectsPlugin < Dylan::Plugin
       end
     end
 
-    nil  # Kein Match
+    nil  # No match
   end
 
   private

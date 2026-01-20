@@ -1,12 +1,9 @@
-version: "3.8"
-
-# Dylan 2.0 - Mac/OrbStack Configuration
-# For local plugin development and testing
+# Dylan - Mac/OrbStack Configuration
 
 services:
   dylan:
     build: .
-    container_name: dylan2-dev
+    container_name: dylan-dev
     restart: unless-stopped
 
     volumes:
@@ -15,7 +12,7 @@ services:
 
     ports:
       # Access via http://localhost:8080
-      - "8090:80"
+      - "8080:80"
 
     working_dir: /app
 

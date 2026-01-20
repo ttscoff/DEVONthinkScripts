@@ -1,7 +1,7 @@
-FROM ruby:3.2-alpine
+FROM ruby:4.0-alpine
 
 # Build-Dependencies + Runtime tools
-RUN apk add --no-cache build-base bash cronie curl
+RUN apk add --no-cache build-base bash cronie curl git
 
 WORKDIR /app
 
@@ -17,6 +17,9 @@ RUN crontab /app/config/crontab
 
 # Port 80 exponieren
 EXPOSE 80
+
+# Aktiviere ZJIT (Ruby 4.0 JIT Compiler) für bessere Performance
+# ENV RUBYOPT="--zjit"
 
 # Start script ausführen (startet Cron + Dylan Server)
 CMD ["/app/scripts/start.sh"]
