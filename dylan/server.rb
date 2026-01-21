@@ -7,6 +7,7 @@
 require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
+require 'yaml'
 
 # Load Dylan Core
 require_relative 'lib/plugin'
@@ -15,6 +16,21 @@ require_relative 'lib/response'
 
 PORT = ENV.fetch('PORT', 80).to_i
 PLUGIN_DIR = File.join(__dir__, 'plugins')
+
+# Check for ZJIT configuration
+runtime_config_path = File.join(__dir__, 'config', 'runtime.yaml')
+if File.exist?(runtime_config_path)
+  runtime_config = YAML.load_file(runtime_config_path)
+  zjit_enabled = runtime_config.dig('zjit', 'enabled')
+
+  if zjit_enabled && !RubyVM::ZJIT.enabled?
+    puts "⚠️  ZJIT is enabled in runtime.yaml but not active"
+    puts "   Start Dylan with: RUBY_ZJIT=1 ruby server.rb"
+    puts "   Or use: ruby --zjit server.rb"
+  elsif RubyVM::ZJIT.enabled?
+    puts "⚡ ZJIT enabled (Zero-overhead JIT)"
+  end
+end
 
 # Initialize router with plugin directory (for hot-reload)
 router = Dylan::Router.new(PLUGIN_DIR)

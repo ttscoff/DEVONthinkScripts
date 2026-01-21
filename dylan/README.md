@@ -120,7 +120,9 @@ dylan/
 │
 ├── config/
 │   ├── crontab             # Cron schedule
-│   └── redirects.yaml      # Simple redirect rules
+│   ├── redirects.yaml      # Simple redirect rules
+│   ├── host-redirects.yaml # Hostname-based redirects
+│   └── runtime.yaml        # Experimental features (Ruby::Box, ZJIT)
 │
 ├── scripts/
 │   ├── monitor.sh          # Network monitor (cron job)
@@ -273,6 +275,31 @@ plugin_files.each { puts "Loading: #{File.basename(it)}"; require it }
   plugin.call(host, path, request)
 end
 ```
+
+### Experimental Features (Optional)
+
+Enable cutting-edge Ruby 4.0 features in `config/runtime.yaml`:
+
+**Ruby::Box** - Plugin Sandboxing:
+```yaml
+ruby_box:
+  enabled: true  # Isolates each plugin in separate execution context
+```
+
+**ZJIT** - Zero-overhead JIT Compiler:
+```yaml
+zjit:
+  enabled: true  # Faster than YJIT for long-running processes
+```
+
+Then start Dylan with:
+```bash
+# For ZJIT
+RUBY_ZJIT=1 ruby server.rb
+# Or: ruby --zjit server.rb
+```
+
+**Note**: These features are experimental and may not be stable. Use at your own risk.
 
 ---
 
