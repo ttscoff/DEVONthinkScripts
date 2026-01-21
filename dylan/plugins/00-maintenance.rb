@@ -35,6 +35,8 @@ class MaintenancePlugin < Dylan::Plugin
       handle_test(request)
     when '/dylan/stats'
       handle_stats(request)
+    when '/dylan/reload'
+      handle_reload(request)
     when '/dylan', '/dylan/'
       handle_index(request)
     else
@@ -53,7 +55,7 @@ class MaintenancePlugin < Dylan::Plugin
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Dylan Maintenance</title>
+        <title>dy.lan Dashboard</title>
         <style>
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -88,7 +90,7 @@ class MaintenancePlugin < Dylan::Plugin
       </head>
       <body>
         <div class="container">
-          <h1>🛠️ Dylan Maintenance</h1>
+          <h1>dy.lan Dashboard</h1>
           <p>Server management and debugging endpoints.</p>
 
           <div class="endpoint">
@@ -106,9 +108,14 @@ class MaintenancePlugin < Dylan::Plugin
             <p>Test which plugin matches a given path.</p>
           </div>
 
+          <div class="endpoint">
+            <strong><a href="/dylan/reload">/dylan/reload</a></strong>
+            <p>Trigger server restart (reloads all plugins and code).</p>
+          </div>
+
           <p style="margin-top: 40px; color: #666; font-size: 14px;">
             Add <code>?format=json</code> to any endpoint for JSON response.<br>
-            To reload plugins: <code>docker restart dylan2</code>
+            YAML configs hot-reload automatically when changed.
           </p>
         </div>
       </body>
@@ -178,6 +185,78 @@ class MaintenancePlugin < Dylan::Plugin
       Dylan::Response.json(result)
     else
       html = render_test_html(result)
+      Dylan::Response.html(html)
+    end
+  end
+
+  # GET /dylan/reload - Trigger server restart
+  def handle_reload(request)
+    format = parse_query(request)['format']
+
+    # Exit with code 0 to trigger container restart (if restart policy is set)
+    Thread.new do
+      sleep 0.5  # Give time to send response
+      puts "🔄 Server restart requested via /dylan/reload"
+      exit(0)
+    end
+
+    if format == 'json'
+      Dylan::Response.json({
+        status: 'restarting',
+        message: 'Server will restart in 0.5 seconds'
+      })
+    else
+      html = <<~HTML
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Restarting...</title>
+          <style>
+            body { font-family: sans-serif; margin: 40px; background: #f5f5f5; text-align: center; padding-top: 100px; }
+            .message { background: white; max-width: 500px; margin: 0 auto; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #4CAF50; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            .status { margin-top: 20px; color: #666; font-size: 14px; }
+          </style>
+          <script>
+            let attempts = 0;
+            const maxAttempts = 30; // 30 seconds
+
+            function checkServer() {
+              attempts++;
+              fetch('/dylan/stats?format=json', { method: 'GET' })
+                .then(response => {
+                  if (response.ok) {
+                    document.getElementById('status').textContent = 'Server is back online! Redirecting...';
+                    setTimeout(() => window.location.href = '/dylan', 500);
+                  } else {
+                    throw new Error('Not ready');
+                  }
+                })
+                .catch(() => {
+                  if (attempts < maxAttempts) {
+                    document.getElementById('status').textContent = `Waiting for server... (${attempts}s)`;
+                    setTimeout(checkServer, 1000);
+                  } else {
+                    document.getElementById('status').textContent = 'Server restart taking longer than expected. Please refresh manually.';
+                  }
+                });
+            }
+
+            // Start checking after 2 seconds (give server time to exit)
+            setTimeout(checkServer, 2000);
+          </script>
+        </head>
+        <body>
+          <div class="message">
+            <h1>🔄 Restarting Server...</h1>
+            <div class="spinner"></div>
+            <p id="status" class="status">Server is restarting...</p>
+          </div>
+        </body>
+        </html>
+      HTML
       Dylan::Response.html(html)
     end
   end

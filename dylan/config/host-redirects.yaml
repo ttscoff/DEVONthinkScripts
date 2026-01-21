@@ -1,0 +1,13 @@
+# Host-based Redirects (Reverse Proxy)
+#
+# Pattern: Ruby Regex matching hostname
+# Target: Target server URL (path will be appended automatically)
+#
+# Examples:
+#   syncthing.mi.lan → http://192.168.1.118:8384
+#   prometheus.mi.lan → http://192.168.1.120:9090
+
+redirects:
+  - pattern: 'syncthing\.mi\.lan'
+    target: 'http://192.168.1.118:8384'
+    description: 'Syncthing Mac'
