@@ -131,12 +131,40 @@ class MaintenancePlugin < Dylan::Plugin
 
     format = parse_query(request)['format']
 
-    plugins = @router.plugins.map do |plugin|
+    # Build map of class names to priorities from plugin directory
+    priority_map = {}
+    if @router.plugin_dir && Dir.exist?(@router.plugin_dir)
+      Dir.glob(File.join(@router.plugin_dir, '*.rb')).each do |file|
+        basename = File.basename(file)
+        # Extract priority from filename: "30-pattern-redirect.rb" -> "30"
+        if basename =~ /^(\d+)-/
+          priority = $1
+
+          # Read file to find all class definitions
+          content = File.read(file)
+          content.scan(/^class\s+(\w+Plugin)\s+</).each do |match|
+            class_name = match[0]
+            priority_map[class_name] = priority
+          end
+        end
+      end
+    end
+
+    plugins = @router.plugins.map.with_index do |plugin, index|
+      class_name = plugin.class.name
+
+      # Get priority from map, fallback to load order
+      priority = priority_map[class_name] || format('%02d', index)
+
       {
-        class: plugin.class.name,
+        priority: priority,
+        name: class_name,
         pattern: plugin.pattern.inspect
       }
     end
+
+    # Sort by priority (numeric)
+    plugins.sort_by! { |p| p[:priority].to_i }
 
     if format == 'json'
       Dylan::Response.json({
@@ -314,7 +342,7 @@ class MaintenancePlugin < Dylan::Plugin
   # Render routes as HTML
   def render_routes_html(plugins)
     rows = plugins.map do |p|
-      "<tr><td>#{p[:class]}</td><td><code>#{escape_html(p[:pattern])}</code></td></tr>"
+      "<tr><td>#{p[:priority]}</td><td>#{p[:name]}</td><td><code>#{escape_html(p[:pattern])}</code></td></tr>"
     end.join("\n")
 
     <<~HTML
@@ -325,11 +353,12 @@ class MaintenancePlugin < Dylan::Plugin
         <title>Dylan Routes</title>
         <style>
           body { font-family: sans-serif; margin: 40px; background: #f5f5f5; }
-          .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+          .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
           table { width: 100%; border-collapse: collapse; margin: 20px 0; }
           th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
           th { background: #4CAF50; color: white; }
-          code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+          td:first-child { font-family: Monaco, monospace; font-size: 13px; color: #666; width: 60px; text-align: center; }
+          code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: Monaco, monospace; }
           a { color: #4CAF50; }
         </style>
       </head>
@@ -338,11 +367,11 @@ class MaintenancePlugin < Dylan::Plugin
           <h1>Registered Routes</h1>
           <p><a href="/dylan">← Back to Dashboard</a></p>
           <table>
-            <tr><th>Plugin</th><th>Pattern</th></tr>
+            <tr><th>Priority</th><th>Plugin</th><th>Pattern</th></tr>
             #{rows}
           </table>
           <p style="color: #666; font-size: 14px;">
-            Total: #{plugins.count} plugin(s) | Routes matched by load order (first match wins)
+            Total: #{plugins.count} plugin(s) | First match wins (lower priority number = checked first)
           </p>
         </div>
       </body>
