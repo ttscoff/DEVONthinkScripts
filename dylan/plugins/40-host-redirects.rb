@@ -1,12 +1,20 @@
 # frozen_string_literal: true
 
 require 'yaml'
+require 'async/http/client'
+require 'async/http/endpoint'
 
 # Host-based Redirects Plugin
 # Reverse Proxy functionality based on hostname
 #
-# Matches requests by hostname (e.g., syncthing.mi.lan)
-# Proxies/redirects to target server with path preserved
+# Supports two modes:
+# - redirect: HTTP 302 redirect (default, URL changes in browser)
+# - proxy: Transparent reverse proxy (URL stays the same)
+#
+# Example YAML:
+#   - pattern: 'syncthing\.lan'
+#     target: 'http://192.168.1.118:8384'
+#     type: redirect  # or: proxy
 
 class HostRedirectsPlugin < Dylan::Plugin
   # No class-level pattern! We check dynamically against YAML
@@ -18,7 +26,8 @@ class HostRedirectsPlugin < Dylan::Plugin
     super
     @config_mtime = nil
     @redirects = load_redirects
-    puts "    Loaded #{@redirects.count} host-based redirect(s) from YAML"
+    @clients = {}  # Client pool for proxy mode
+    puts "    Loaded #{@redirects.count} host-based rule(s) from YAML"
   end
 
   # Override match? for hostname patterns
@@ -33,25 +42,54 @@ class HostRedirectsPlugin < Dylan::Plugin
   end
 
   def call(host, path, request)
-    @redirects.each do |redirect|
-      if match = host.match(redirect[:pattern])
-        # Replace ${1}, ${2}, etc. with capture groups from host
-        target = redirect[:target].dup
-        match.captures.each_with_index do |capture, index|
-          target.gsub!("${#{index + 1}}", capture.to_s)
-        end
+    rule = @redirects.find { |r| host.match(r[:pattern]) }
+    return nil unless rule
 
-        # Append the path if it's not just "/"
-        target += path unless path == '/'
+    # Build target URL (base + path)
+    # Path already contains query string from server.rb
+    target_base = rule[:target].chomp('/')
+    full_url = "#{target_base}#{path}"
 
-        return Dylan::Response.redirect(target)
-      end
+    # Choose mode: proxy or redirect
+    if rule[:type] == 'proxy'
+      handle_proxy(target_base, path, request)
+    else
+      Dylan::Response.redirect(full_url)
     end
-
-    nil  # No match
   end
 
   private
+
+  # Proxy mode: Forward request to backend transparently
+  def handle_proxy(target_base, path, request)
+    # Parse target endpoint
+    endpoint = Async::HTTP::Endpoint.parse(target_base)
+
+    # Reuse client for performance (connection pooling)
+    client = @clients[target_base] ||= Async::HTTP::Client.new(endpoint)
+
+    # Build new request for backend
+    # We need to create a new Request object with the path
+    backend_request = Async::HTTP::Protocol::Request.new(
+      endpoint.scheme,
+      endpoint.authority,
+      request.method,
+      path,
+      nil,  # version
+      request.headers,
+      request.body
+    )
+
+    # Forward request to backend
+    backend_response = client.call(backend_request)
+
+    # Return the response directly (already in correct format)
+    backend_response
+  rescue => e
+    puts "❌ Proxy Error (#{target_base}#{path}): #{e.message}"
+    puts "   #{e.backtrace&.first}"
+    Dylan::Response.error(502, "Bad Gateway: #{e.message}")
+  end
 
   def reload_if_changed
     return unless File.exist?(CONFIG_PATH)
@@ -61,7 +99,12 @@ class HostRedirectsPlugin < Dylan::Plugin
     if @config_mtime.nil? || current_mtime > @config_mtime
       @config_mtime = current_mtime
       @redirects = load_redirects
-      puts "🔄 Reloaded host-redirects.yaml (#{@redirects.count} redirects)" if @config_mtime
+
+      # Close old clients on config reload
+      @clients.each_value(&:close)
+      @clients.clear
+
+      puts "🔄 Reloaded host-redirects.yaml (#{@redirects.count} rules)"
     end
   end
 
@@ -73,6 +116,7 @@ class HostRedirectsPlugin < Dylan::Plugin
       {
         pattern: Regexp.new(r['pattern']),
         target: r['target'],
+        type: r['type'] || 'redirect',  # default: redirect
         description: r['description']
       }
     end
