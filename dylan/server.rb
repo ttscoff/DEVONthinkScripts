@@ -86,23 +86,20 @@ Async do |task|
   # Create server with proper API
   server = Async::HTTP::Server.for(endpoint) do |request|
     # Each request runs in its own Fiber (automatically parallel)
-    t_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-    client_ip = request.remote_address.ip_address rescue 'unknown'
     path = request.path
     host = request.authority || ''
 
     # Call router
     response = router.call(host, path, request)
 
-    # Calculate internal processing time
-    t_end = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    duration_ms = ((t_end - t_start) * 1000).round(2)
-
-    # Logging with internal latency measurement
-    timestamp = Time.now.strftime('%H:%M:%S')
-    status = response.status
-    puts "[#{timestamp}] #{host}#{path} -> #{status} (Internal: #{duration_ms}ms)"
+    # Optional logging (disable with DYLAN_QUIET=1 for max performance)
+    unless ENV['DYLAN_QUIET']
+      status = response.status
+      # Only log errors or if debug mode enabled
+      if ENV['DYLAN_DEBUG'] || status >= 400
+        puts "[#{Time.now.strftime('%H:%M:%S')}] #{host}#{path} -> #{status}"
+      end
+    end
 
     response
   rescue => e
