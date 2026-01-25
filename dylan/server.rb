@@ -86,6 +86,8 @@ Async do |task|
   # Create server with proper API
   server = Async::HTTP::Server.for(endpoint) do |request|
     # Each request runs in its own Fiber (automatically parallel)
+    t_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
     client_ip = request.remote_address.ip_address rescue 'unknown'
     path = request.path
     host = request.authority || ''
@@ -93,10 +95,14 @@ Async do |task|
     # Call router
     response = router.call(host, path, request)
 
-    # Logging
-    timestamp = Time.now.strftime('%Y-%m-%d %H:%M:%S')
+    # Calculate internal processing time
+    t_end = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    duration_ms = ((t_end - t_start) * 1000).round(2)
+
+    # Logging with internal latency measurement
+    timestamp = Time.now.strftime('%H:%M:%S')
     status = response.status
-    puts "[#{timestamp}] #{client_ip} -> #{host}#{path} -> #{status}"
+    puts "[#{timestamp}] #{host}#{path} -> #{status} (Internal: #{duration_ms}ms)"
 
     response
   rescue => e
