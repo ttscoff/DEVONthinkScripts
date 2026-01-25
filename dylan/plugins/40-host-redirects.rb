@@ -27,6 +27,7 @@ class HostRedirectsPlugin < Dylan::Plugin
     @config_mtime = nil
     @redirects = load_redirects
     @clients = {}  # Client pool for proxy mode
+    @last_reload_check = Time.now
     puts "    Loaded #{@redirects.count} host-based rule(s) from YAML"
   end
 
@@ -35,8 +36,12 @@ class HostRedirectsPlugin < Dylan::Plugin
     # Quick check: any redirects configured?
     return false if @redirects.empty?
 
-    # Only reload if we have potential matches
-    reload_if_changed
+    # Only check for config changes every 5 seconds (not every request)
+    # This prevents filesystem overhead on every request
+    if Time.now - @last_reload_check > 5
+      reload_if_changed
+      @last_reload_check = Time.now
+    end
 
     @redirects.any? { |r| host.match?(r[:pattern]) }
   end
