@@ -5,13 +5,14 @@ require 'protocol/http/body/buffered'
 
 module Dylan
   # Response-Helper für gängige HTTP-Antworten
+  # Uses HTTP Keep-Alive for better performance (managed by async-http)
   module Response
     # Redirect (302 Found)
     # @param location [String] Ziel-URL
     def self.redirect(location)
       Async::HTTP::Protocol::Response[
         302,
-        { 'location' => location, 'connection' => 'close' },
+        { 'location' => location },
         []
       ]
     end
@@ -23,7 +24,7 @@ module Dylan
       body = Protocol::HTTP::Body::Buffered.wrap(html)
       Async::HTTP::Protocol::Response[
         status,
-        { 'content-type' => 'text/html; charset=UTF-8', 'connection' => 'close' },
+        { 'content-type' => 'text/html; charset=UTF-8' },
         body
       ]
     end
@@ -35,7 +36,7 @@ module Dylan
       body = Protocol::HTTP::Body::Buffered.wrap(text)
       Async::HTTP::Protocol::Response[
         status,
-        { 'content-type' => 'text/plain; charset=UTF-8', 'connection' => 'close' },
+        { 'content-type' => 'text/plain; charset=UTF-8' },
         body
       ]
     end
@@ -49,7 +50,7 @@ module Dylan
       body = Protocol::HTTP::Body::Buffered.wrap(json_string)
       Async::HTTP::Protocol::Response[
         status,
-        { 'content-type' => 'application/json; charset=UTF-8', 'connection' => 'close' },
+        { 'content-type' => 'application/json; charset=UTF-8' },
         body
       ]
     end

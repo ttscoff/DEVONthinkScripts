@@ -4,10 +4,14 @@
 # Dylan 1.0 - Async HTTP Server
 # Supports parallel requests via Fibers
 
+require 'socket'
 require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
 require 'yaml'
+
+# Performance: Disable reverse DNS lookup (prevents 80-100ms delay per request)
+BasicSocket.do_not_reverse_lookup = true
 
 # Load Dylan Core
 require_relative 'lib/plugin'
